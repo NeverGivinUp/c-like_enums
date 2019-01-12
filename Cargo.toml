@@ -1,0 +1,27 @@
+[package]
+name = "c_like_try_from"
+version = "0.0.1"
+authors = ["Navid Vahdat <navid@vahdat.ch>"]
+edition = "2018"
+
+license = "MIT/Apache-2.0"
+readme = "README.md"
+keywords = ["enum", "c-like"]
+categories = ["api-bindings", "gui", "web-programming"]
+description = "Derives TryFrom trait for c-like enums"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+quote = "0.6"
+serde = "1"
+serde_derive = "1"
+proc-macro2 = "0.4"
+try_from_int_error ={path="try-from-int-error"}
+
+[dependencies.syn]
+version = "0.15"
+default-features = false
+features = ["derive", "parsing", "printing","extra-traits"]
+
