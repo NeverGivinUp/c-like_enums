@@ -1,11 +1,9 @@
-#![feature(try_from)]
-
 #[macro_use]
 extern crate c_like_try_from;
 
 
-
 use std::convert::TryFrom;
+
 use try_from_int_error::TryFromIntError;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug, CLikeTryFrom)]
@@ -29,5 +27,6 @@ fn derive() {
 
 #[test]
 fn undefined_err() {
-    let foo = Foo::try_from(99u16).unwrap_err();
+    #[allow(unused_variables)]
+        let foo = Foo::try_from(99u16).unwrap_err();
 }

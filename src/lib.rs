@@ -1,21 +1,20 @@
 extern crate proc_macro;
-extern crate syn;
+extern crate proc_macro2;
 #[macro_use]
 extern crate quote;
-extern crate proc_macro2;
- 
+extern crate syn;
+
 use std::collections::HashSet;
-use proc_macro2::TokenStream;
+
 use proc_macro2::Ident;
-
-use try_from_int_error::TryFromIntError;
-
+use proc_macro2::TokenStream;
+use syn::{DeriveInput, parse_macro_input};
 
 #[proc_macro_derive(CLikeTryFrom)]
 pub fn c_like_enum_from_derive_macro(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     // Construct a representation of Rust code as a syntax tree
     // that we can manipulate
-    let ast = syn::parse(input).unwrap();
+    let ast = parse_macro_input!(input as DeriveInput);
 
     // Build the trait implementation
     impl_c_like_enum_from(&ast)
@@ -37,8 +36,8 @@ fn lit_to_string(lit: &syn::Lit) -> String {
 }
 
 
-fn extract_variant_data(enum_variant: &syn::Variant, enum_name: &syn::Ident)
-                        -> (Option<String>, Option<syn::IntSuffix>, proc_macro2::TokenStream) {
+fn extract_variant_data<'a>(enum_variant: &'a syn::Variant, enum_name: &syn::Ident)
+                            -> (Option<String>, Option<&'a str>, proc_macro2::TokenStream) {
     let variant_name = &enum_variant.ident;
     if let syn::Fields::Unnamed(ref fields) = enum_variant.fields {
         if !&fields.unnamed.is_empty() {
@@ -52,7 +51,8 @@ fn extract_variant_data(enum_variant: &syn::Variant, enum_name: &syn::Ident)
             let discr_type = Some(lit_to_string(&lit.lit));
             match &lit.lit {
                 syn::Lit::Int(ref int_lit) => {
-                    let int_type = Some(int_lit.suffix());
+                    let suffix = int_lit.suffix();
+                    let int_type = Some(suffix);
                     let variant_val = int_lit;
                     (discr_type, int_type, quote!(#variant_val => Ok(#enum_name::#variant_name)))
                 }
@@ -73,7 +73,7 @@ fn extract_repr_type(ast: &syn::DeriveInput) -> Option<String> {
             // println!("processing attribute {:?}", attr.path);
             if syn::AttrStyle::Outer == attr.style {
                 if let Some(pair) = attr.path.segments.first() {
-                    let seg: &syn::PathSegment = pair.into_value();
+                    let seg: &syn::PathSegment = pair.into();
                     let matching = "repr".to_string() == seg.ident.to_string();
                     //       println!("segment ident is matching expected_ident: '{}'", matching);
                     matching
@@ -82,7 +82,7 @@ fn extract_repr_type(ast: &syn::DeriveInput) -> Option<String> {
         })
         .map(|attr| {
             //println!("retained attribute {:?} ", attr.path);
-            &attr.tts
+            &attr.tokens
         })
         .next() {
         if let Some(proc_macro2::TokenTree::Group(g)) = (**attribute_tts).clone().into_iter().next() {
@@ -109,7 +109,7 @@ fn impl_c_like_enum_from(ast: &syn::DeriveInput) -> proc_macro::TokenStream {
 
 
     let mut types: HashSet<Option<String>> = HashSet::new();
-    let mut sub_types: HashSet<Option<syn::IntSuffix>> = HashSet::new();
+    let mut sub_types: HashSet<Option<&str>> = HashSet::new();
     let variants: Vec<proc_macro2::TokenStream> = if let syn::Data::Enum(enum_data) = &ast.data {
         if enum_data.variants.is_empty() { return quote!().into(); };
         enum_data.variants.iter().map(|variant| {
@@ -143,13 +143,13 @@ fn impl_c_like_enum_from(ast: &syn::DeriveInput) -> proc_macro::TokenStream {
     let sub_discr_type = sub_types.into_iter().next().unwrap().unwrap();
 
     let from_type = if discriminant_type == "int".to_string() {
-        let int_type = format!("{:?}", sub_discr_type).to_lowercase();
+        let int_type = sub_discr_type.to_lowercase();
         if repr_type != int_type {
             panic!(format!("Type of discriminants '{}' does not match attribute #[repr({})]", int_type, repr_type));
         }
 
         match sub_discr_type {
-            syn::IntSuffix::None => to_token_stream(syn::IntSuffix::Usize),
+            "" => to_token_stream("usize"),
             _ => to_token_stream(sub_discr_type)
         }
     } else {
@@ -157,12 +157,11 @@ fn impl_c_like_enum_from(ast: &syn::DeriveInput) -> proc_macro::TokenStream {
     };
 
 
-
     expand(from_type, enum_name, variants).into()
 //panic!(expand(from_type, enum_name, variants).to_string());
 }
 
-fn expand(from_type:TokenStream, enum_name:&Ident, variants: Vec<proc_macro2::TokenStream> ) -> TokenStream {
+fn expand(from_type: TokenStream, enum_name: &Ident, variants: Vec<proc_macro2::TokenStream>) -> TokenStream {
     quote! {
         impl TryFrom <#from_type> for #enum_name {
             type Error = TryFromIntError<#from_type>;
@@ -176,16 +175,12 @@ fn expand(from_type:TokenStream, enum_name:&Ident, variants: Vec<proc_macro2::To
     }
 }
 
-fn to_token_stream(int_suffix: syn::IntSuffix) -> proc_macro2::TokenStream {
+fn to_token_stream(int_suffix: &str) -> proc_macro2::TokenStream {
     proc_macro2::TokenStream::from(
         proc_macro::TokenStream::from(
             proc_macro::TokenTree::Ident(
                 proc_macro::Ident::new(
-                    &format!("{:?}", int_suffix).to_lowercase()[..],
+                    &int_suffix.to_lowercase()[..],
                     proc_macro::Span::call_site()))))
 }
 
-#[cfg(test)]
-mod tests {
-
-}
